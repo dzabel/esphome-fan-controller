@@ -1,6 +1,6 @@
 substitutions:
   friendly_name: Growbox Zuluft
-  target_temperature: 15°C
+  target_temperature: 20°C
 
 esphome:
   name: growbox-fan
@@ -174,11 +174,11 @@ sensor:
     name: ${friendly_name} Fan Speed
     accuracy_decimals: 0
     filters:
-      - multiply: 0.5  # Depending on how many pulses the fan sends per round - should be 0.5 or 1 - try...
+      - multiply: 1.59  # Depending on how many pulses the fan sends per round - should be 0.5 or 1 - try...
     count_mode:
       rising_edge: INCREMENT
       falling_edge: DISABLE
-    update_interval: 30s
+    update_interval: 10s
 
 ########################################################
 # START THE FAN CONTROLLER SETUP
@@ -222,7 +222,7 @@ sensor:
     pin: GPIO33
     model: DHT11
     temperature:
-      name: "${friendly_name} DHT Temperature"
+      name: "${friendly_name} Temperatur (Ziel: ${target_temperature})"
       id: console_fan_temperature
       accuracy_decimals: 3
 
@@ -234,7 +234,7 @@ sensor:
              send_every: 1
 
     humidity:
-      name: "${friendly_name} DHT Humidity"
+      name: "${friendly_name} Luftfeuchtigkeit"
       id: console_fan_humidity
 
     # the DHT11 can only be read every 1s. Use 1.3s to be safe.
@@ -245,7 +245,7 @@ sensor:
     pin: GPIO18
     model: DHT11
     temperature:
-      name: "${friendly_name} DHT Temperature Outside"
+      name: "${friendly_name} Temperatur Outside"
       id: console_fan_temperature_outside
       accuracy_decimals: 3
 
@@ -257,7 +257,7 @@ sensor:
              send_every: 1
 
     humidity:
-      name: "${friendly_name} DHT Humidity Outside"
+      name: "${friendly_name} Luftfeuchtigkeit Outside"
       id: console_fan_humidity_outside
 
     # the DHT11 can only be read every 1s. Use 1.3s to be safe.
@@ -284,7 +284,7 @@ output:
     # my fans stop working below 13% powerful.
     # also they're  powerful and loud, cap their max speed to 80%
     min_power: 0%
-    max_power: 80%
+    max_power: 100%
 
 # Good for debugging, you can manually set the fan 
 # speed. Just make sure the Climate device is set to off or it will keep getting overridden.
@@ -330,8 +330,9 @@ climate:
         
     # The extents of the HA Thermostat
     visual:
-      min_temperature: -5 °C
-      max_temperature: 40 °C
+      min_temperature: -5
+      max_temperature: 27
+      temperature_step: 0.5
   
     # See the README for setting up these parameters.
     # These are over ridden by the number templates above.
@@ -343,14 +344,14 @@ climate:
       output_averaging_samples: 1
       derivative_averaging_samples: 5
 
-    # How to behave when close to the target temperature?
-    deadband_parameters:
-      threshold_high: 0.4°C
-      threshold_low: -1.0°C
-      kp_multiplier: 0.0
-      ki_multiplier: 0.04
-      kd_multiplier: 0.0
-      deadband_output_averaging_samples: 15
+    # # How to behave when close to the target temperature?
+    # deadband_parameters:
+    #   threshold_high: 0.05°C
+    #   threshold_low: -0.05°C
+    #   kp_multiplier: 0.05
+    #   ki_multiplier: 0.05
+    #   kd_multiplier: 0.0
+    #   deadband_output_averaging_samples: 15
 
 switch:
   # Expose an ESP32 restart button to HA
