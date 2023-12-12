@@ -174,7 +174,10 @@ sensor:
     accuracy_decimals: 0
     filters:
       - multiply: 0.5  # Depending on how many pulses the fan sends per round - should be 0.5 or 1 - try...
-
+    count_mode:
+      rising_edge: INCREMENT
+      falling_edge: DISABLE
+    update_interval: 30s
 
 ########################################################
 # START THE FAN CONTROLLER SETUP
@@ -216,8 +219,9 @@ sensor:
   # GET TEMP/HUMIDITY FROM DHT11
   - platform: dht
     pin: GPIO33
+    model: DHT11
     temperature:
-      name: "Temperature"
+      name: "DHT Temperature"
       id: console_fan_temperature
       accuracy_decimals: 3
 
@@ -229,7 +233,7 @@ sensor:
              send_every: 1
 
     humidity:
-      name: "Humidity"
+      name: "DHT Humidity"
       id: console_fan_humidity
 
     # the DHT11 can only be read every 1s. Use 1.3s to be safe.
@@ -247,14 +251,14 @@ output:
   # ledc is the name of the pwm output system on an esp32
   - platform: ledc
     id: console_fan_speed
-    pin: GPIO13
+    pin: GPIO27
 
     # 25KHz is standard PC fan frequency, minimises buzzing
     frequency: "25000 Hz" 
 
     # my fans stop working below 13% powerful.
     # also they're  powerful and loud, cap their max speed to 80%
-    min_power: 13%
+    min_power: 0%
     max_power: 80%
 
 # Good for debugging, you can manually set the fan 
@@ -272,8 +276,8 @@ climate:
     id: console_thermostat
     sensor: console_fan_temperature
 
-    # It is summer right now, so 30c is a decent target.
-    default_target_temperature: 30°C
+    # 25c is a decent target.
+    default_target_temperature: 15°C
     cool_output: console_fan_speed
 
     # ON state change, publish the values to the x_term numbers defined 
@@ -300,7 +304,7 @@ climate:
         
     # The extents of the HA Thermostat
     visual:
-      min_temperature: 20 °C
+      min_temperature: 10 °C
       max_temperature: 50 °C
   
     # See the README for setting up these parameters.
