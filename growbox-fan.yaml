@@ -219,7 +219,7 @@ sensor:
 
   # GET TEMP/HUMIDITY FROM DHT11
   - platform: dht
-    pin: GPIO33
+    pin: GPIO18
     model: DHT11
     temperature:
       name: "${friendly_name} Temperatur (Ziel: ${target_temperature})"
@@ -229,20 +229,23 @@ sensor:
       # If you don't smooth the temperature readings 
       # the PID controller over reacts to small changes.
       filters:
-         - exponential_moving_average:  
-             alpha: 0.1
-             send_every: 1
+        - offset: -1.2
+        - exponential_moving_average:  
+            alpha: 0.1
+            send_every: 1
 
     humidity:
       name: "${friendly_name} Luftfeuchtigkeit"
       id: console_fan_humidity
+      filters:
+        - offset: -2
 
-    # the DHT11 can only be read every 1s. Use 1.3s to be safe.
-    update_interval: 1.3s
+    # the DHT11 can only be read every 1s. Use 2s to be safe.
+    update_interval: 2s
 
       # GET TEMP/HUMIDITY FROM DHT11
   - platform: dht
-    pin: GPIO18
+    pin: GPIO33
     model: DHT11
     temperature:
       name: "${friendly_name} Temperatur Outside"
@@ -252,16 +255,18 @@ sensor:
       # If you don't smooth the temperature readings 
       # the PID controller over reacts to small changes.
       filters:
-         - exponential_moving_average:  
-             alpha: 0.1
-             send_every: 1
+        - exponential_moving_average:  
+            alpha: 0.1
+            send_every: 1
 
     humidity:
       name: "${friendly_name} Luftfeuchtigkeit Outside"
       id: console_fan_humidity_outside
+      filters:
+        - offset: -7
 
-    # the DHT11 can only be read every 1s. Use 1.3s to be safe.
-    update_interval: 1.3s
+    # the DHT11 can only be read every 1s. Use 2s to be safe.
+    update_interval: 2s
 
 
   # Take the "COOL" value of the pid and send 
