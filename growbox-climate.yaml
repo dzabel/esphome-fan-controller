@@ -228,7 +228,7 @@ sensor:
 
   # GET TEMP/HUMIDITY FROM DHT11
   - platform: dht
-    pin: GPIO33
+    pin: GPIO18
     model: DHT11
     temperature:
       name: "${keller} Temperatur"
@@ -269,7 +269,7 @@ sensor:
 
       # GET TEMP/HUMIDITY FROM DHT11
   - platform: dht
-    pin: GPIO18
+    pin: GPIO33
     model: DHT11
     temperature:
       name: "${friendly_name} Temperatur"
@@ -348,7 +348,7 @@ climate:
   - platform: pid
     name: "${friendly_name} Thermostat"
     id: growbox_thermostat
-    sensor: growbox_fan_temperature
+    sensor: growbox_fan_temperature_outside
 
     # # It is summer right now, so 30°C is a decent target.
     # default_target_temperature: 30°C
