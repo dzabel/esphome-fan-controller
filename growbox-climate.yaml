@@ -26,11 +26,11 @@ esp32:
 
 # pid climate log update is noisy, dial it back to warn
 logger:
-  level: DEBUG
+  level: INFO
   logs: 
-    climate: DEBUG
+    climate: INFO
     dht: WARN
-    pulse_counter: DEBUG
+    pulse_counter: INFO
     component: ERROR
     sensor: INFO
 
@@ -188,6 +188,19 @@ sensor:
       rising_edge: INCREMENT
       falling_edge: DISABLE
     update_interval: 10s
+    on_value: 
+      then:
+          - logger.log:
+              format: ${friendly_name} Lüfter Geschwindikeit %.1f RPM"
+              args: [ x ]
+              level: info
+    on_raw_value:
+          then:
+          - logger.log:
+              format: ${friendly_name} Lüfter Geschwindikeit %.1f pulses/min"
+              args: [ x ]
+              level: info
+        
 
 ########################################################
 # START THE FAN CONTROLLER SETUP
@@ -238,7 +251,7 @@ sensor:
       # If you don't smooth the temperature readings 
       # the PID controller over reacts to small changes.
       filters:
-        - offset: -1.2
+        - offset: -2
         - exponential_moving_average:  
             alpha: 0.1
             send_every: 1
@@ -382,9 +395,11 @@ climate:
             call.set_target_temperature(id(target_temperature));
             call.set_mode("COOL");
             call.perform();
-            ESP_LOGI( "target_temperature", "target_temperature: %f", id(growbox_thermostat).target_temperature);
-            ESP_LOGI( "user: target_temperature", "target_temperature: %f", id(target_temperature));
+            ESP_LOGI( "climate", "target_temperature: %f", id(growbox_thermostat).target_temperature);
+            ESP_LOGI( "climate", "user - target_temperature: %f", id(target_temperature));
           }
+          ESP_LOGI( "climate", "Aktuelle Temperatur %f°C", id(growbox_thermostat).current_temperature);
+          ESP_LOGI( "climate", "Ziel Temperatur %f°C", id(growbox_thermostat).target_temperature);
     # The extents of the HA Thermostat
     visual:
       min_temperature: 0
