@@ -20,7 +20,7 @@ preferences:
 # ESP32 AND NETWORK SETUP
 
 esp32:
-  board: nodemcu-32s
+  board: az-delivery-devkit-v4
   framework:
     type: arduino
 
@@ -36,7 +36,21 @@ logger:
 
 # default HA integration, OTA updater and backup http web portal
 api:
+  password: !secret ota_password
 ota:
+  password: !secret ota_password
+  on_begin:
+    then:
+      - logger.log: "OTA start"
+  on_progress:
+    then:
+      - logger.log:
+          format: "OTA progress %0.1f%%"
+          args: ["x"]
+  on_end:
+    then:
+      - logger.log: "OTA end"
+
 wifi:
 
   # Read the wifi/pass from secrets.yaml:
@@ -44,6 +58,26 @@ wifi:
   # wifi_password: "XXXXXXX"
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+
+  ap:
+    ssid: "${friendly_name} AP"
+    password: !secret wifi_ap_password
+
+captive_portal:
+
+# Activates web_server
+web_server:
+  port: 80
+  auth:
+    username: !secret web_server_username
+    password: !secret web_server_password
+  js_include: "./webserver/www.js"
+  js_url: ""
+  local: true
+  version: 2
+
+# Activates prometheus /metrics endpoint
+prometheus:
 
 number:
 
@@ -389,21 +423,10 @@ climate:
       - sensor.template.publish:
           id: e_term
           state: !lambda 'return -id(growbox_thermostat).get_error_value();'
-      - lambda: |-
-          if (id(growbox_thermostat).target_temperature != id(target_temperature)) {
-            auto call = id(growbox_thermostat).make_call();
-            call.set_target_temperature(id(target_temperature));
-            call.set_mode("COOL");
-            call.perform();
-            ESP_LOGI( "climate", "target_temperature: %f", id(growbox_thermostat).target_temperature);
-            ESP_LOGI( "climate", "user - target_temperature: %f", id(target_temperature));
-          }
-          ESP_LOGI( "climate", "Aktuelle Temperatur %f°C", id(growbox_thermostat).current_temperature);
-          ESP_LOGI( "climate", "Ziel Temperatur %f°C", id(growbox_thermostat).target_temperature);
     # The extents of the HA Thermostat
     visual:
       min_temperature: 0
-      max_temperature: 27
+      max_temperature: 30
       temperature_step: 0.5
   
     # See the README for setting up these parameters.
