@@ -26,17 +26,19 @@ esp32:
 
 # pid climate log update is noisy, dial it back to warn
 logger:
-  level: INFO
+  level: WARN
   logs: 
-    climate: INFO
+    climate: WARN
     dht: WARN
-    pulse_counter: INFO
+    pulse_counter: WARN
     component: ERROR
-    sensor: INFO
+    sensor: WARN
 
 # default HA integration, OTA updater and backup http web portal
 api:
   password: !secret ota_password
+  encryption:
+    key: "On/QrgIiM/bn5gcYcqYsT839qybui1dOW1SZ6xqWvKQ="
 ota:
   password: !secret ota_password
   on_begin:
@@ -60,7 +62,7 @@ wifi:
   password: !secret wifi_password
 
   ap:
-    ssid: "${friendly_name} AP"
+    ssid: !secret wifi_ap_ssid
     password: !secret wifi_ap_password
 
 captive_portal:
@@ -178,14 +180,14 @@ sensor:
   # Send WiFi signal strength & uptime to HA
   - platform: wifi_signal
     name: ${friendly_name} WiFi Signalstärke
-    update_interval: 60s
+    update_interval: 180s
 
   # This is a bit of overkill. It sends a human readable 
   # uptime string 1h 41m 32s instead of 6092 seconds
   - platform: uptime
     name: ${friendly_name} Uptime
     id: uptime_sensor
-    update_interval: 60s
+    update_interval: 180s
     on_raw_value:
       then:
         - text_sensor.template.publish:
@@ -217,7 +219,7 @@ sensor:
     name: ${friendly_name} Fan Speed
     accuracy_decimals: 0
     filters:
-      - multiply: 0.5  # Depending on how many pulses the fan sends per round - should be 0.5 or 1 - try...
+      - multiply: 1  # Depending on how many pulses the fan sends per round - should be 0.5 or 1 - try...
     count_mode:
       rising_edge: INCREMENT
       falling_edge: DISABLE
@@ -312,7 +314,7 @@ sensor:
               level: info
 
     # the DHT11 can only be read every 1s.
-    update_interval: 15s
+    update_interval: 10s
 
       # GET TEMP/HUMIDITY FROM DHT11
   - platform: dht
@@ -351,7 +353,7 @@ sensor:
 
 
     # the DHT11 can only be read every 1s.
-    update_interval: 15s
+    update_interval: 10s
 
 
   # Take the "COOL" value of the pid and send 
@@ -427,7 +429,7 @@ climate:
     visual:
       min_temperature: 0
       max_temperature: 30
-      temperature_step: 0.5
+      temperature_step: 0.1
   
     # See the README for setting up these parameters.
     # These are over ridden by the number templates above.

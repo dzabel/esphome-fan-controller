@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "esp32 - fan",
+			"path": "../../../../Documents/PlatformIO/Projects/esp32 - fan"
+		},
+		{
+			"name": "growbox-climate",
+			"path": ".esphome/build/growbox-climate"
+		}
+	],
+	"settings": {
+	}
+}
