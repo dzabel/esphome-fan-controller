@@ -1,8 +1,9 @@
 substitutions:
-  friendly_name: Growschrank
+  friendly_name: Trockenbox
+  standort: standort
 
 esphome:
-  name: growbox-fan
+  name: drybox-fan
 
 # Throttle writing parameters to the internal flash memory to reduce ESP memory wear / degradation
 preferences:
@@ -13,7 +14,7 @@ preferences:
 # ESP32 AND NETWORK SETUP
 
 esp32:
-  board: nodemcu-32s
+  board: az-delivery-devkit-v4
   framework:
     type: arduino
 
@@ -26,7 +27,23 @@ logger:
 
 # default HA integration, OTA updater and backup http web portal
 api:
+  encryption:
+    key: !secret encryption_key
 ota:
+  - platform: esphome
+    password: !secret ota_password
+    on_begin:
+      then:
+        - logger.log: "OTA start"
+    on_progress:
+      then:
+        - logger.log:
+            format: "OTA progress %0.1f%%"
+            args: ["x"]
+    on_end:
+      then:
+        - logger.log: "OTA end"
+
 wifi:
 
   # Read the wifi/pass from secrets.yaml:
@@ -34,6 +51,26 @@ wifi:
   # wifi_password: "XXXXXXX"
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+
+  ap:
+    ssid: !secret wifi_ap_ssid
+    password: !secret wifi_ap_password
+
+captive_portal:
+
+# Activates web_server
+web_server:
+  port: 80
+  auth:
+    username: !secret web_server_username
+    password: !secret web_server_password
+  js_include: "./webserver/www.js"
+  js_url: ""
+  local: true
+  version: 2
+
+# Activates prometheus /metrics endpoint
+prometheus:
 
 number:
 
@@ -43,25 +80,31 @@ number:
     internal: false
     max_value: 100.0
     min_value: 0.0
-    step: 5.0
+    step: 1.0
     optimistic: true
     mode: slider
+    restore_value: true
+    initial_value: 20.0
     on_value:
       then:
         if:
           condition:
-            fan.is_on: growbox_fan_toggle
+            fan.is_on: drybox_fan_toggle
           then:
           - output.set_level:
-              id: growbox_fan_speed
+              id: drybox_fan_speed
               level: !lambda "return x/100;"
+          - logger.log:
+              format: ${friendly_name} Lüfter Speed %.1f%%"
+              args: [ x ]
+              level: info
 
 text_sensor:
 
   # Send IP Address
   - platform: wifi_info
     ip_address:
-      name: ${friendly_name} IP Address
+      name: ${friendly_name} IP Addresse
 
   # Send Uptime in raw seconds
   - platform: template
@@ -73,15 +116,15 @@ sensor:
 
   # Send WiFi signal strength & uptime to HA
   - platform: wifi_signal
-    name: ${friendly_name} WiFi Strength
-    update_interval: 60s
+    name: ${friendly_name} WiFi Signalstärke
+    update_interval: 180s
 
   # This is a bit of overkill. It sends a human readable 
   # uptime string 1h 41m 32s instead of 6092 seconds
   - platform: uptime
     name: ${friendly_name} Uptime
     id: uptime_sensor
-    update_interval: 60s
+    update_interval: 180s
     on_raw_value:
       then:
         - text_sensor.template.publish:
@@ -113,110 +156,74 @@ sensor:
     name: ${friendly_name} Fan Speed
     accuracy_decimals: 0
     filters:
-      - multiply: 1.41  # Depending on how many pulses the fan sends per round - should be 0.5 or 1 - try...
+      - multiply: 0.5  # Depending on how many pulses the fan sends per round - should be 0.5 or 1 - try...
     count_mode:
       rising_edge: INCREMENT
       falling_edge: DISABLE
     update_interval: 10s
+    on_value: 
+      then:
+          - logger.log:
+              format: ${friendly_name} Lüfter Geschwindikeit %.1f RPM"
+              args: [ x ]
+              level: info
+    on_raw_value:
+          then:
+          - logger.log:
+              format: ${friendly_name} Lüfter Geschwindikeit %.1f pulses/min"
+              args: [ x ]
+              level: info
 
   # GET TEMP/HUMIDITY FROM DHT11
   - platform: dht
     pin: GPIO18
-    model: DHT11
+    model: DHT22
     temperature:
       name: "${friendly_name} Temperatur"
-      id: growbox_fan_temperature
+      id: drybox_fan_temperature
       accuracy_decimals: 3
-      on_value:
-          then:
-            - output.set_level:
-                id: growbox_fan_speed
-                level: !lambda |-
-                  if (id(growbox_fan_temperature).state < 20) {
-                    ESP_LOGI( "speed_level", "speed: 0 (below 20)");
-                    auto call = id(growbox_fan_toggle).turn_off();
-                    call.perform();
-                    return 0;
-                  } else if (id(growbox_fan_temperature).state > 25) {
-                    ESP_LOGI( "speed_level", "speed: %f (above 25)", 100);
-                    if (id(growbox_fan_toggle).state) {
-                      // Fan is ON, do something here
-                      ESP_LOGD( "fan_control", "FAN is already ON");
-                    } else {
-                      // Fan is OFF, do something else here
-                      ESP_LOGD( "fan_control", "FAN is OFF, switch on.");
-                      auto call = id(growbox_fan_toggle).turn_on();
-                      call.perform();
-                    }
-                    return 100;
-                  } else {
-                    float speed_level = 5+(95*pow(2.71828,(id(growbox_fan_temperature).state-25))/(pow(2.71828,5)));
-                    ESP_LOGI( "TEST: speed_level", "speed: %f", speed_level);
-                    if (id(growbox_fan_toggle).state) {
-                      // Fan is ON, do something here
-                      ESP_LOGD( "fan_control", "FAN is already ON");
-                    } else {
-                      // Fan is OFF, do something else here
-                      ESP_LOGD( "fan_control", "FAN is OFF, switch on.");
-                      auto call = id(growbox_fan_toggle).turn_on();
-                      call.perform();
-                    }
-                    return speed_level;
-                  }
-            - delay: 2s
-        
 
       # If you don't smooth the temperature readings 
       # the PID controller over reacts to small changes.
       filters:
-        - offset: -1.2
         - exponential_moving_average:  
             alpha: 0.1
             send_every: 1
+
+      on_value:
+        then:
+          - logger.log:
+              format: ${friendly_name} Temperatur %.1f°C"
+              args: [ 'id(drybox_fan_temperature).state' ]
+              level: info
+
 
     humidity:
       name: "${friendly_name} Luftfeuchtigkeit"
-      id: growbox_fan_humidity
+      id: drybox_fan_humidity
       filters:
-        - offset: -2
 
-    # the DHT11 can only be read every 1s. Use 2s to be safe.
-    update_interval: 5s
+      on_value:
+        then:
+          - logger.log:
+              format: "${friendly_name} Luftfeuchtigkeit %.1f%%"
+              args: [ 'id(drybox_fan_humidity).state' ]
+              level: info
 
-      # GET TEMP/HUMIDITY FROM DHT11
-  - platform: dht
-    pin: GPIO33
-    model: DHT11
-    temperature:
-      name: "${friendly_name} Temperatur Outside"
-      id: growbox_fan_temperature_outside
-      accuracy_decimals: 3
+    # the DHT11 can only be read every 1s.
+    update_interval: 10s
 
-      # If you don't smooth the temperature readings 
-      # the PID controller over reacts to small changes.
-      filters:
-        - exponential_moving_average:  
-            alpha: 0.1
-            send_every: 1
-
-    humidity:
-      name: "${friendly_name} Luftfeuchtigkeit Outside"
-      id: growbox_fan_humidity_outside
-      filters:
-        - offset: -7
-
-    # the DHT11 can only be read every 1s. Use 2s to be safe.
-    update_interval: 5s
 
 output:
   # Wire this pin (13) into the PWM pin of your 12v fan
   # ledc is the name of the pwm output system on an esp32
   - platform: ledc
-    id: growbox_fan_speed
+    id: drybox_fan_speed
     pin: GPIO27
 
-    #frequency: "25000 Hz" # 25KHz is standard PC fan frequency, minimises buzzing
-    frequency: 22.5kHz #Pulse the fan fast to prevent noise
+    # 25KHz is standard PC fan frequency, minimises buzzing
+    frequency: "25000 Hz"
+    #frequency: 22.5kHz #Pulse the fan fast to prevent noise
 
     # my fans stop working below 13% powerful.
     # also they're  powerful and loud, cap their max speed to 80%
@@ -225,15 +232,20 @@ output:
 
 fan:
   - platform: speed
-    output: growbox_fan_speed
+    output: drybox_fan_speed
     name: ${friendly_name} Override Enable
-    id: growbox_fan_toggle
+    id: drybox_fan_toggle
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - number.set:
+          id: fan_speed_override
+          value: !lambda "return id(fan_speed_override).state;"
 
 switch:
   # Expose an ESP32 restart button to HA
   - platform: restart
     name: ${friendly_name} ESP32 Restart
-    id: growbox_fan_restart
+    id: drybox_fan_restart
 
 # Restart every day at 12:30am. 
 # I've had some memory issues lockup 
@@ -246,5 +258,5 @@ time:
       minutes: 30
       hours: 0
       then:
-       - switch.turn_on: growbox_fan_restart
+       - switch.turn_on: drybox_fan_restart
     

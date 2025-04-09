@@ -6,7 +6,7 @@ globals:
   - id: target_temperature
     type: float
     restore_value: no
-    initial_value: '21.0'
+    initial_value: '19.5'
 
 esphome:
   name: growbox-climate
@@ -36,22 +36,22 @@ logger:
 
 # default HA integration, OTA updater and backup http web portal
 api:
-  password: !secret ota_password
   encryption:
-    key: "On/QrgIiM/bn5gcYcqYsT839qybui1dOW1SZ6xqWvKQ="
+    key: !secret encryption_key
 ota:
-  password: !secret ota_password
-  on_begin:
-    then:
-      - logger.log: "OTA start"
-  on_progress:
-    then:
-      - logger.log:
-          format: "OTA progress %0.1f%%"
-          args: ["x"]
-  on_end:
-    then:
-      - logger.log: "OTA end"
+  - platform: esphome
+    password: !secret ota_password
+    on_begin:
+      then:
+        - logger.log: "OTA start"
+    on_progress:
+      then:
+        - logger.log:
+            format: "OTA progress %0.1f%%"
+            args: ["x"]
+    on_end:
+      then:
+        - logger.log: "OTA end"
 
 wifi:
 
@@ -162,6 +162,25 @@ number:
     set_action: 
       lambda: id(growbox_thermostat).set_ki_multiplier( x );
 
+  # - platform: template
+  #   name: "Fan Speed Override"
+  #   id: fan_speed_override
+  #   internal: false
+  #   max_value: 100.0
+  #   min_value: 0.0
+  #   step: 1.0
+  #   optimistic: true
+  #   mode: slider
+  #   on_value:
+  #     then:
+  #       if:
+  #         condition:
+  #           fan.is_on: growbox_fan_toggle
+  #         then:
+  #         - output.set_level:
+  #             id: growbox_fan_speed
+  #             level: !lambda "return x/100;"
+
 text_sensor:
 
   # Send IP Address
@@ -211,7 +230,7 @@ sensor:
   # Read the Tacho PIN and show measured RPM as a sensor (only with 4-pin PWM fans!)
 
   - platform: pulse_counter
-    pin: 
+    pin:
       number: GPIO25   # Connect to any input PIN on the ESP
       mode: INPUT_PULLUP
     unit_of_measurement: 'RPM'
@@ -224,7 +243,7 @@ sensor:
       rising_edge: INCREMENT
       falling_edge: DISABLE
     update_interval: 10s
-    on_value: 
+    on_value:
       then:
           - logger.log:
               format: ${friendly_name} Lüfter Geschwindikeit %.1f RPM"
@@ -236,7 +255,9 @@ sensor:
               format: ${friendly_name} Lüfter Geschwindikeit %.1f pulses/min"
               args: [ x ]
               level: info
-        
+
+  - platform: internal_temperature
+    name: ${friendly_name} Internal Temperature
 
 ########################################################
 # START THE FAN CONTROLLER SETUP
@@ -304,7 +325,7 @@ sensor:
       name: "${keller} Luftfeuchtigkeit"
       id: growbox_fan_humidity
       filters:
-        - offset: -2
+        - offset: -9
 
       on_value:
         then:
@@ -343,7 +364,7 @@ sensor:
       name: "${friendly_name} Luftfeuchtigkeit"
       id: growbox_fan_humidity_outside
       filters:
-        - offset: -7
+        - offset: -10
       on_value:
         then:
           - logger.log:
@@ -390,6 +411,7 @@ output:
 #   - platform: speed
 #     output: growbox_fan_speed
 #     name: "Console Fan Speed"
+#     id: growbox_fan_toggle
 
 # Expose a PID-controlled Thermostat
 # Manual: https://esphome.io/components/climate/pid.html
@@ -479,4 +501,3 @@ button:
   name: "PID Climate Autotune"
   on_press: 
     - climate.pid.autotune: growbox_thermostat
-    
