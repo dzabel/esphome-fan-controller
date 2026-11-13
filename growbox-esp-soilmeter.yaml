@@ -1,0 +1,215 @@
+# DIYmore ESP32 Bodenfeuchte-Sensor (SKU 012592) mit DHT11 und 18650-Akku
+# Doku/Messwerte: ../esp32-soil/CLAUDE.md und ../esp32-soil/PLAN.md
+#
+# Ablauf pro Zyklus: aufwachen -> messen -> an HA senden -> ${sleep_duration} Deep Sleep.
+# Wach bleiben (z.B. fuer OTA):
+#   - linker Taster (RESET/EN) oder Einschalten -> bleibt ${wach_nach_reset} wach
+#   - HA-Helfer ${ota_entity} = an -> bleibt wach, bis der Helfer wieder aus ist
+# Der "Boot"-Taster ist auf diesem Board nicht mit GPIO0 verbunden (gemessen 2026-11-13).
+
+substitutions:
+  name: bodenfeuchte-1
+  friendly_name: Bodenfeuchte 1
+  ota_entity: input_boolean.bodenfeuchte_1_ota
+  sleep_duration: 30min
+  run_duration: 45s            # Obergrenze, das Skript schlaeft normalerweise frueher
+  wach_nach_reset: 5min
+  # Kalibrierung Board 1 (MAC 1c:c3:ab:bc:0f:2c), gemessen 2026-11-13 per USB:
+  soil_dry_v: "2.84"           # Sonde in Luft (2,843 V)
+  soil_wet_v: "1.44"           # Sonde in Wasser bis zum Strich (1,437 V); Nachmessung, erste Messung 1,70 V war zu flach
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: 500              # nach Sensor-Setup, vor WLAN: Messung vor den Sendespitzen
+    then:
+      - script.execute: messen_und_schlafen
+
+esp32:
+  board: az-delivery-devkit-v4
+  framework:
+    type: arduino
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret encryption_key
+  # Spaeter (Stage C6, HA >= 2026.10 vorhanden): Geraet meldet sich nach dem Aufwachen selbst bei HA.
+  # outgoing_connection:
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+    on_begin:
+      then:
+        - logger.log: "OTA start"
+    on_end:
+      then:
+        - logger.log: "OTA end"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # bewusst ohne ap:/captive_portal: der AP startet erst nach 90 s, das Geraet schlaeft frueher
+
+deep_sleep:
+  id: deep_sleep_1
+  run_duration: ${run_duration}
+  sleep_duration: ${sleep_duration}
+
+globals:
+  - id: halten_ha
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: halten_reset
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+output:
+  - platform: gpio
+    id: led_blau
+    pin:
+      number: GPIO16
+      inverted: true           # gemessen: LED ist aktiv low
+
+binary_sensor:
+  - platform: homeassistant
+    id: ha_ota_modus
+    entity_id: ${ota_entity}
+    internal: true
+    on_state:
+      then:
+        - lambda: 'id(halten_ha) = x;'
+        - script.execute: wach_pruefen
+
+script:
+  # LED an + Schlaf verhindern, solange ein Wach-Grund besteht
+  - id: wach_pruefen
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(halten_ha) || id(halten_reset);'
+          then:
+            - deep_sleep.prevent: deep_sleep_1
+            - output.turn_on: led_blau
+          else:
+            - deep_sleep.allow: deep_sleep_1
+            - output.turn_off: led_blau
+
+  - id: messen_und_schlafen
+    mode: single
+    then:
+      # Weckgrund: alles ausser Timer (Einschalten, Reset-Taster) -> eine Weile wach bleiben
+      - lambda: 'id(halten_reset) = (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_TIMER);'
+      - script.execute: wach_pruefen
+      - component.update: akku_adc
+      - component.update: boden_adc
+      - delay: 1500ms          # DHT11-Datenblatt: nach Versorgung >= 1 s nichts senden
+      - component.update: dht_sensor
+      - wait_until:
+          condition:
+            api.connected:
+              state_subscription_only: true
+          timeout: 25s
+      - component.update: wifi_rssi
+      - wait_until:
+          condition:
+            lambda: 'return id(ha_ota_modus).has_state();'
+          timeout: 5s          # fehlt der Helfer in HA, kostet das 5 s pro Zyklus
+      - lambda: 'id(halten_ha) = id(ha_ota_modus).has_state() && id(ha_ota_modus).state;'
+      - script.execute: wach_pruefen
+      - delay: 2s              # Puffer, damit die Werte sicher bei HA ankommen
+      - if:
+          condition:
+            lambda: 'return id(halten_reset);'
+          then:
+            - logger.log: {format: "Start per Reset/Einschalten: bleibe ${wach_nach_reset} wach (OTA moeglich)", level: INFO}
+            - delay: ${wach_nach_reset}
+            - lambda: 'id(halten_reset) = false;'
+            - script.execute: wach_pruefen
+      - if:
+          condition:
+            lambda: 'return !id(halten_ha);'
+          then:
+            - logger.log:
+                format: "Wachzeit bis Schlaf: %u ms"
+                args: ['millis()']
+                level: INFO
+            - deep_sleep.enter: deep_sleep_1   # umgeht prevent, deshalb die Abfrage davor
+          else:
+            - logger.log: {format: "Wach-Modus aktiv (HA-Helfer an)", level: INFO}
+
+sensor:
+  # GET TEMP/HUMIDITY FROM DHT11
+  - platform: dht
+    id: dht_sensor
+    pin: GPIO22
+    model: DHT11
+    update_interval: never
+    temperature:
+      name: "Temperatur"
+    humidity:
+      name: "Luftfeuchtigkeit"
+
+  # Bodenfeuchte: Rohspannung (Diagnose) + Prozent
+  - platform: adc
+    id: boden_adc
+    pin: GPIO32
+    name: "Bodenfeuchte Spannung"
+    attenuation: 12db
+    samples: 16
+    update_interval: never
+    accuracy_decimals: 3
+    entity_category: diagnostic
+    on_value:
+      then:
+        - sensor.template.publish:
+            id: boden_prozent
+            state: !lambda 'return x;'
+
+  - platform: template
+    id: boden_prozent
+    name: "Bodenfeuchte"
+    unit_of_measurement: "%"
+    device_class: moisture
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - calibrate_linear:
+          method: least_squares
+          datapoints:
+            - ${soil_dry_v} -> 0.0
+            - ${soil_wet_v} -> 100.0
+      - clamp:
+          min_value: 0
+          max_value: 100
+
+  # Akku: nur Rohwert zur Diagnose. Die Spannung am Pin liegt am unteren ADC-Rand (~0,075-0,08 V)
+  # und reagiert nicht messbar auf den Akku (getestet 2026-11-13, mit/ohne USB) -> keine
+  # Akkuspannung/-prozent. Leerer Akku wird in HA ueber "keine Meldung seit 2 h" erkannt.
+  - platform: adc
+    id: akku_adc
+    pin: GPIO34
+    name: "Akku ADC"
+    attenuation: 0db
+    samples: 32
+    update_interval: never
+    accuracy_decimals: 3
+    entity_category: diagnostic
+
+  - platform: wifi_signal
+    id: wifi_rssi
+    name: "WiFi Signalstärke"
+    update_interval: never
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "IP Adresse"
